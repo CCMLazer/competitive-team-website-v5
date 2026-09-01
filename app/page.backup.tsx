@@ -1,0 +1,11 @@
+ "use client";
+import{useEffect,useState}from"react";import Link from"next/link";import{DEFAULT,Site}from"@/lib/site";import{getSite}from"@/lib/store";
+export default function Home(){const[s,setS]=useState<Site>(DEFAULT);useEffect(()=>setS(getSite()),[]);
+return <main style={{"--bg":s.colors.bg,"--card":s.colors.card,"--text":s.colors.text,"--muted":s.colors.muted,"--accent":s.colors.accent,"--line":s.colors.line}as React.CSSProperties}>
+<header><Link className="brand" href="/"><span className="brandMark">{s.teamLogo?<img src={s.teamLogo} alt=""/>:<b>{s.name.slice(0,2)}</b>}</span>{s.name}</Link><nav><a href="#games">Games</a><a href="#roster">Roster</a><a href="#about">About</a><Link href="/admin">Admin</Link></nav></header>
+<section className="hero"><div><p className="eyebrow">{s.intro}</p><h1>{s.name}</h1><h2>{s.tag}</h2><p className="lead">{s.description}</p><a className="button primary" href={s.discord}>{s.heroButton}</a><a className="button" href={s.tiktok}>TikTok</a></div><div className="heroLogo">{s.teamLogo?<img src={s.teamLogo} alt=""/>:<span>{s.name.slice(0,1)}</span>}</div></section>
+{s.visible.games&&<section id="games" className="section"><p className="sectionLabel">01 / GAMES</p><div className="games"><Game g={s.games.gt}/><Game g={s.games.od}/></div></section>}
+{s.visible.roster&&<section id="roster" className="section"><p className="sectionLabel">02 / ROSTER</p><div className="players">{s.players.map(p=><article className="player" key={p.id}><div className="avatar">{p.image?<img src={p.image} alt=""/>:<span>{p.name.slice(0,1)}</span>}</div><div><h3>{p.name}</h3><p>{p.game}</p><small>{p.role}</small></div></article>)}</div></section>}
+{s.visible.about&&<section id="about" className="section about"><p className="sectionLabel">03 / ABOUT</p><p className="aboutText">{s.description}</p></section>}
+<footer>{s.footer}<span><a href={s.discord}>Discord</a> · <a href={s.tiktok}>TikTok</a></span></footer></main>}
+function Game({g}:{g:{title:string;desc:string;logo:string}}){return <article className="game"><div className="gameLogo">{g.logo?<img src={g.logo} alt=""/>:<span>{g.title.slice(0,1)}</span>}</div><small>COMPETITIVE DIVISION</small><h2>{g.title}</h2><p>{g.desc}</p></article>}

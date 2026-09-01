@@ -1,0 +1,1764 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { DEFAULT, Site, Player } from "@/lib/site";
+import { clearSite, getSite, putSite } from "@/lib/store";
+
+type LayoutItem = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  fontSize: number;
+};
+
+type Layout = {
+  intro: LayoutItem;
+  logo: LayoutItem;
+  name: LayoutItem;
+  tag: LayoutItem;
+  description: LayoutItem;
+  buttons: LayoutItem;
+};
+
+const DEFAULT_LAYOUT: Layout = {
+  intro: {
+    x: 40,
+    y: 50,
+    width: 500,
+    height: 30,
+    fontSize: 12,
+  },
+
+  logo: {
+    x: 40,
+    y: 95,
+    width: 90,
+    height: 90,
+    fontSize: 16,
+  },
+
+  name: {
+    x: 40,
+    y: 200,
+    width: 700,
+    height: 100,
+    fontSize: 82,
+  },
+
+  tag: {
+    x: 40,
+    y: 315,
+    width: 650,
+    height: 60,
+    fontSize: 30,
+  },
+
+  description: {
+    x: 40,
+    y: 390,
+    width: 620,
+    height: 100,
+    fontSize: 18,
+  },
+
+  buttons: {
+    x: 40,
+    y: 500,
+    width: 300,
+    height: 55,
+    fontSize: 14,
+  },
+};
+
+function normalizeSite(data: any): Site {
+  return {
+    ...DEFAULT,
+    ...(data || {}),
+
+    visible: {
+      ...DEFAULT.visible,
+      ...(data?.visible || {}),
+    },
+
+    games: {
+      ...DEFAULT.games,
+      ...(data?.games || {}),
+
+      gt: {
+        ...DEFAULT.games.gt,
+        ...(data?.games?.gt || {}),
+      },
+
+      od: {
+        ...DEFAULT.games.od,
+        ...(data?.games?.od || {}),
+      },
+    },
+
+    colors: {
+      ...DEFAULT.colors,
+      ...(data?.colors || {}),
+    },
+
+    players: Array.isArray(data?.players)
+      ? data.players
+      : DEFAULT.players,
+
+    background: {
+      ...(DEFAULT as any).background,
+      ...(data?.background || {}),
+    },
+
+    layout: {
+      ...DEFAULT_LAYOUT,
+      ...(data?.layout || {}),
+      intro: {
+        ...DEFAULT_LAYOUT.intro,
+        ...(data?.layout?.intro || {}),
+      },
+      logo: {
+        ...DEFAULT_LAYOUT.logo,
+        ...(data?.layout?.logo || {}),
+      },
+      name: {
+        ...DEFAULT_LAYOUT.name,
+        ...(data?.layout?.name || {}),
+      },
+      tag: {
+        ...DEFAULT_LAYOUT.tag,
+        ...(data?.layout?.tag || {}),
+      },
+      description: {
+        ...DEFAULT_LAYOUT.description,
+        ...(data?.layout?.description || {}),
+      },
+      buttons: {
+        ...DEFAULT_LAYOUT.buttons,
+        ...(data?.layout?.buttons || {}),
+      },
+    },
+  };
+}
+
+const ELEMENT_NAMES: Record<keyof Layout, string> = {
+  intro: "Small intro",
+  logo: "Team logo",
+  name: "Team name",
+  tag: "Tagline",
+  description: "Description",
+  buttons: "Buttons",
+};
+
+export default function Admin() {
+  const [s, setS] = useState<Site>(DEFAULT);
+  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [selected, setSelected] =
+    useState<keyof Layout>("name");
+
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getSite()
+      .then((site) => {
+        setS(normalizeSite(site));
+      })
+      .catch((error) => {
+        console.error("Failed to load site:", error);
+        setS(normalizeSite(DEFAULT));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, []);
+
+  const set = (path: string, value: any) => {
+    setS((old) => {
+      const n = structuredClone(old) as any;
+      const parts = path.split(".");
+
+      let o = n;
+
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!o[parts[i]]) {
+          o[parts[i]] = {};
+        }
+
+        o = o[parts[i]];
+      }
+
+      o[parts[parts.length - 1]] = value;
+
+      return normalizeSite(n);
+    });
+  };
+
+  const upload = (path: string, file: File) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      set(path, String(reader.result));
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const updateLayout = (
+    element: keyof Layout,
+    changes: Partial<LayoutItem>
+  ) => {
+    setS((old) => ({
+      ...old,
+      layout: {
+        ...(old as any).layout,
+        [element]: {
+          ...((old as any).layout?.[element] ||
+            DEFAULT_LAYOUT[element]),
+          ...changes,
+        },
+      },
+    }));
+  };
+
+  const resetLayout = () => {
+    if (!confirm("Reset all element positions and sizes?")) {
+      return;
+    }
+
+    setS((old) => ({
+      ...old,
+      layout: structuredClone(DEFAULT_LAYOUT),
+    }));
+  };
+
+  const addPlayer = () => {
+    setS((x) => ({
+      ...x,
+      players: [
+        ...x.players,
+        {
+          id: crypto.randomUUID(),
+          name: "New Player",
+          game: "Gorilla Tag",
+          role: "Player",
+          image: "",
+        },
+      ],
+    }));
+  };
+
+  const removePlayer = (id: string) => {
+    setS((x) => ({
+      ...x,
+      players: x.players.filter((p) => p.id !== id),
+    }));
+  };
+
+  const updatePlayer = (
+    i: number,
+    key: keyof Player,
+    value: string
+  ) => {
+    setS((x) => {
+      const players = [...x.players];
+
+      players[i] = {
+        ...players[i],
+        [key]: value,
+      };
+
+      return {
+        ...x,
+        players,
+      };
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+
+    try {
+      await putSite(normalizeSite(s));
+
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to save website:", error);
+      alert("Failed to save website. Check the terminal.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reset = async () => {
+    if (!confirm("Reset the entire website?")) {
+      return;
+    }
+
+    try {
+      await clearSite();
+
+      setS(normalizeSite(DEFAULT));
+
+      setSaved(true);
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to reset:", error);
+      alert("Failed to reset website.");
+    }
+  };
+
+  if (loading) {
+    return (
+      <main className="admin">
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "grid",
+            placeItems: "center",
+            color: "#fff",
+          }}
+        >
+          <div>
+            <h1>Loading builder...</h1>
+            <p>Connecting to your website...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const layout =
+    ((s as any).layout as Layout) || DEFAULT_LAYOUT;
+
+  const current = layout[selected] || DEFAULT_LAYOUT[selected];
+
+  return (
+    <main className="admin">
+      <header className="adminHeader">
+        <a href="/">← View site</a>
+
+        <b>TEAM BUILDER</b>
+
+        <span>V5</span>
+      </header>
+
+      <div className="builder">
+        {/* SIDEBAR */}
+
+        <aside>
+          <div className="sideTitle">EDIT SITE</div>
+
+          {[
+            "branding",
+            "hero",
+            "games",
+            "visibility",
+            "background",
+            "layout",
+            "colors",
+            "roster",
+            "links",
+          ].map((x) => (
+            <a href={`#${x}`} key={x}>
+              {x}
+            </a>
+          ))}
+
+          <button onClick={reset}>Reset</button>
+        </aside>
+
+        {/* SETTINGS */}
+
+        <section className="settings">
+          <div className="settingsIntro">
+            <small>NO CODE NEEDED</small>
+
+            <h1>Customize your team</h1>
+
+            <p>
+              Edit your website and see your changes
+              instantly.
+            </p>
+          </div>
+
+          {/* BRANDING */}
+
+          <Block id="branding" title="Branding">
+            <Field
+              label="Team name"
+              value={s.name}
+              onChange={(v) => set("name", v)}
+            />
+
+            <Field
+              label="Tagline"
+              value={s.tag}
+              onChange={(v) => set("tag", v)}
+            />
+
+            <ImageField
+              label="Team logo"
+              value={s.teamLogo}
+              onChange={(v) => set("teamLogo", v)}
+              onUpload={(f) => upload("teamLogo", f)}
+            />
+          </Block>
+
+          {/* HERO */}
+
+          <Block id="hero" title="Hero">
+            <Field
+              label="Small intro"
+              value={s.intro}
+              onChange={(v) => set("intro", v)}
+            />
+
+            <Field
+              label="Main tagline"
+              value={s.tag}
+              onChange={(v) => set("tag", v)}
+            />
+
+            <Area
+              label="Hero description"
+              value={s.description}
+              onChange={(v) =>
+                set("description", v)
+              }
+            />
+
+            <Field
+              label="Main button text"
+              value={s.heroButton}
+              onChange={(v) =>
+                set("heroButton", v)
+              }
+            />
+          </Block>
+
+          {/* GAMES */}
+
+          <Block id="games" title="Games">
+            <GameEdit
+              title="Gorilla Tag"
+              data={s.games.gt}
+              set={(k, v) =>
+                set(`games.gt.${k}`, v)
+              }
+              upload={(f) =>
+                upload("games.gt.logo", f)
+              }
+            />
+
+            <GameEdit
+              title="Orion Drift"
+              data={s.games.od}
+              set={(k, v) =>
+                set(`games.od.${k}`, v)
+              }
+              upload={(f) =>
+                upload("games.od.logo", f)
+              }
+            />
+          </Block>
+
+          {/* VISIBILITY */}
+
+          <Block id="visibility" title="Sections">
+            <Toggle
+              label="Games section"
+              value={s.visible.games}
+              onChange={(v) =>
+                set("visible.games", v)
+              }
+            />
+
+            <Toggle
+              label="Roster section"
+              value={s.visible.roster}
+              onChange={(v) =>
+                set("visible.roster", v)
+              }
+            />
+
+            <Toggle
+              label="About section"
+              value={s.visible.about}
+              onChange={(v) =>
+                set("visible.about", v)
+              }
+            />
+          </Block>
+
+          {/* BACKGROUND */}
+
+          <Block
+            id="background"
+            title="Background"
+          >
+            <ImageField
+              label="Background image"
+              value={
+                (s as any).background?.image || ""
+              }
+              onChange={(v) =>
+                set("background.image", v)
+              }
+              onUpload={(f) =>
+                upload("background.image", f)
+              }
+            />
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <Field
+                label="Position"
+                value={
+                  (s as any).background
+                    ?.position || "center"
+                }
+                onChange={(v) =>
+                  set(
+                    "background.position",
+                    v
+                  )
+                }
+              />
+
+              <Field
+                label="Size"
+                value={
+                  (s as any).background?.size ||
+                  "cover"
+                }
+                onChange={(v) =>
+                  set(
+                    "background.size",
+                    v
+                  )
+                }
+              />
+            </div>
+
+            <label className="field">
+              Overlay
+              <input
+                type="range"
+                min="0"
+                max="0.9"
+                step="0.05"
+                value={
+                  (s as any).background
+                    ?.overlay ?? 0.35
+                }
+                onChange={(e) =>
+                  set(
+                    "background.overlay",
+                    Number(e.target.value)
+                  )
+                }
+              />
+
+              <small>
+                {Math.round(
+                  ((s as any).background
+                    ?.overlay ?? 0.35) * 100
+                )}
+                %
+              </small>
+            </label>
+          </Block>
+
+          {/* LAYOUT */}
+
+          <Block
+            id="layout"
+            title="Layout / Canvas"
+          >
+            <div className="layoutIntro">
+              <b>DESIGN CANVAS</b>
+
+              <p>
+                Select an element, drag it around,
+                or resize it using the corner handle.
+              </p>
+            </div>
+
+            <div className="elementList">
+              {(Object.keys(
+                ELEMENT_NAMES
+              ) as Array<keyof Layout>).map(
+                (key) => (
+                  <button
+                    key={key}
+                    className={
+                      selected === key
+                        ? "selectedElement"
+                        : ""
+                    }
+                    onClick={() =>
+                      setSelected(key)
+                    }
+                  >
+                    <span>
+                      {ELEMENT_NAMES[key]}
+                    </span>
+
+                    <small>
+                      {Math.round(
+                        layout[key].width
+                      )}
+                      px
+                    </small>
+                  </button>
+                )
+              )}
+            </div>
+
+            <div className="layoutControls">
+              <h3>
+                {ELEMENT_NAMES[selected]}
+              </h3>
+
+              <NumberField
+                label="X position"
+                value={current.x}
+                onChange={(v) =>
+                  updateLayout(selected, {
+                    x: v,
+                  })
+                }
+              />
+
+              <NumberField
+                label="Y position"
+                value={current.y}
+                onChange={(v) =>
+                  updateLayout(selected, {
+                    y: v,
+                  })
+                }
+              />
+
+              <NumberField
+                label="Width"
+                value={current.width}
+                onChange={(v) =>
+                  updateLayout(selected, {
+                    width: Math.max(20, v),
+                  })
+                }
+              />
+
+              <NumberField
+                label="Height"
+                value={current.height}
+                onChange={(v) =>
+                  updateLayout(selected, {
+                    height: Math.max(20, v),
+                  })
+                }
+              />
+
+              <NumberField
+                label="Font size"
+                value={current.fontSize}
+                onChange={(v) =>
+                  updateLayout(selected, {
+                    fontSize: Math.max(6, v),
+                  })
+                }
+              />
+
+              <button
+                className="secondaryButton"
+                onClick={resetLayout}
+              >
+                Reset layout
+              </button>
+            </div>
+
+            <EditorCanvas
+              site={s}
+              layout={layout}
+              selected={selected}
+              setSelected={setSelected}
+              updateLayout={updateLayout}
+              canvasRef={canvasRef}
+            />
+          </Block>
+
+          {/* COLORS */}
+
+          <Block id="colors" title="Colors">
+            <div className="colorGrid">
+              {Object.entries(s.colors).map(
+                ([key, value]) => (
+                  <div
+                    className="colorRow"
+                    key={key}
+                  >
+                    <label>
+                      {key}
+
+                      <input
+                        value={value}
+                        onChange={(e) =>
+                          set(
+                            `colors.${key}`,
+                            e.target.value
+                          )
+                        }
+                      />
+                    </label>
+
+                    <input
+                      type="color"
+                      value={value}
+                      onChange={(e) =>
+                        set(
+                          `colors.${key}`,
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
+          </Block>
+
+          {/* ROSTER */}
+
+          <Block id="roster" title="Roster">
+            <div className="rosterTools">
+              <span>
+                {s.players.length} players
+              </span>
+
+              <button onClick={addPlayer}>
+                + Add player
+              </button>
+            </div>
+
+            {s.players.map((p, i) => (
+              <div
+                className="playerEdit"
+                key={p.id}
+              >
+                <div className="playerEditHead">
+                  <b>{p.name}</b>
+
+                  <button
+                    onClick={() =>
+                      removePlayer(p.id)
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                <Field
+                  label="Name"
+                  value={p.name}
+                  onChange={(v) =>
+                    updatePlayer(
+                      i,
+                      "name",
+                      v
+                    )
+                  }
+                />
+
+                <Field
+                  label="Game"
+                  value={p.game}
+                  onChange={(v) =>
+                    updatePlayer(
+                      i,
+                      "game",
+                      v
+                    )
+                  }
+                />
+
+                <Field
+                  label="Role"
+                  value={p.role}
+                  onChange={(v) =>
+                    updatePlayer(
+                      i,
+                      "role",
+                      v
+                    )
+                  }
+                />
+
+                <ImageField
+                  label="Player image"
+                  value={p.image}
+                  onChange={(v) =>
+                    updatePlayer(
+                      i,
+                      "image",
+                      v
+                    )
+                  }
+                  onUpload={(file) => {
+                    const reader =
+                      new FileReader();
+
+                    reader.onload = () => {
+                      updatePlayer(
+                        i,
+                        "image",
+                        String(
+                          reader.result
+                        )
+                      );
+                    };
+
+                    reader.readAsDataURL(
+                      file
+                    );
+                  }}
+                />
+              </div>
+            ))}
+          </Block>
+
+          {/* LINKS */}
+
+          <Block id="links" title="Socials">
+            <Field
+              label="Discord link"
+              value={s.discord}
+              onChange={(v) =>
+                set("discord", v)
+              }
+            />
+
+            <Field
+              label="TikTok link"
+              value={s.tiktok}
+              onChange={(v) =>
+                set("tiktok", v)
+              }
+            />
+
+            <Field
+              label="Footer text"
+              value={s.footer}
+              onChange={(v) =>
+                set("footer", v)
+              }
+            />
+          </Block>
+        </section>
+
+        {/* LIVE PREVIEW */}
+
+        <Preview
+          site={s}
+          layout={layout}
+        />
+      </div>
+
+      {/* SAVE BAR */}
+
+      <div className="saveBar">
+        <button
+          className="saveButton"
+          onClick={save}
+          disabled={saving}
+        >
+          {saving
+            ? "Saving..."
+            : saved
+            ? "✓ Saved"
+            : "Save changes"}
+        </button>
+      </div>
+    </main>
+  );
+}
+
+/* -------------------------------------------------- */
+/* CANVAS EDITOR                                      */
+/* -------------------------------------------------- */
+
+function EditorCanvas({
+  site,
+  layout,
+  selected,
+  setSelected,
+  updateLayout,
+  canvasRef,
+}: {
+  site: Site;
+  layout: Layout;
+  selected: keyof Layout;
+  setSelected: (
+    value: keyof Layout
+  ) => void;
+  updateLayout: (
+    element: keyof Layout,
+    changes: Partial<LayoutItem>
+  ) => void;
+  canvasRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const drag = useRef<{
+    type: "move" | "resize";
+    element: keyof Layout;
+    startX: number;
+    startY: number;
+    original: LayoutItem;
+  } | null>(null);
+
+  const beginDrag = (
+    e: React.PointerEvent,
+    element: keyof Layout,
+    type: "move" | "resize"
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setSelected(element);
+
+    drag.current = {
+      type,
+      element,
+      startX: e.clientX,
+      startY: e.clientY,
+      original: {
+        ...layout[element],
+      },
+    };
+
+    (
+      e.currentTarget as HTMLElement
+    ).setPointerCapture(e.pointerId);
+  };
+
+  const move = (
+    e: React.PointerEvent
+  ) => {
+    if (!drag.current) return;
+
+    const d = drag.current;
+
+    const dx =
+      e.clientX - d.startX;
+
+    const dy =
+      e.clientY - d.startY;
+
+    if (d.type === "move") {
+      updateLayout(d.element, {
+        x: Math.max(
+          0,
+          d.original.x + dx
+        ),
+        y: Math.max(
+          0,
+          d.original.y + dy
+        ),
+      });
+    } else {
+      updateLayout(d.element, {
+        width: Math.max(
+          30,
+          d.original.width + dx
+        ),
+        height: Math.max(
+          30,
+          d.original.height + dy
+        ),
+      });
+    }
+  };
+
+  const stop = () => {
+    drag.current = null;
+  };
+
+  const itemStyle = (
+    key: keyof Layout
+  ): React.CSSProperties => {
+    const item = layout[key];
+
+    return {
+      position: "absolute",
+      left: item.x,
+      top: item.y,
+      width: item.width,
+      height: item.height,
+      border:
+        selected === key
+          ? "2px solid #fff"
+          : "1px dashed rgba(255,255,255,.18)",
+      boxSizing: "border-box",
+      cursor: "move",
+      userSelect: "none",
+      touchAction: "none",
+    };
+  };
+
+  return (
+    <div
+      ref={canvasRef}
+      className="designCanvas"
+      onPointerMove={move}
+      onPointerUp={stop}
+      onPointerCancel={stop}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: 650,
+        overflow: "hidden",
+        borderRadius: 12,
+        border: `1px solid ${site.colors.line}`,
+        backgroundColor: site.colors.bg,
+        backgroundImage:
+          (site as any).background?.image
+            ? `linear-gradient(rgba(0,0,0,${
+                (site as any).background
+                  ?.overlay ?? 0.35
+              }),rgba(0,0,0,${
+                (site as any).background
+                  ?.overlay ?? 0.35
+              })),url("${(site as any).background.image}")`
+            : "none",
+        backgroundPosition:
+          (site as any).background
+            ?.position || "center",
+        backgroundSize:
+          (site as any).background
+            ?.size || "cover",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          padding: 12,
+          pointerEvents: "none",
+          color: site.colors.muted,
+          fontSize: 10,
+          letterSpacing: ".12em",
+        }}
+      >
+        DRAG ELEMENTS • DRAG CORNER TO RESIZE
+      </div>
+
+      {/* INTRO */}
+
+      <div
+        style={itemStyle("intro")}
+        onPointerDown={(e) =>
+          beginDrag(
+            e,
+            "intro",
+            "move"
+          )
+        }
+      >
+        <span
+          style={{
+            color: site.colors.muted,
+            fontSize:
+              layout.intro.fontSize,
+            fontWeight: 800,
+            letterSpacing:
+              ".12em",
+          }}
+        >
+          {site.intro}
+        </span>
+
+        {selected === "intro" && (
+          <ResizeHandle
+            onPointerDown={(e) =>
+              beginDrag(
+                e,
+                "intro",
+                "resize"
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* LOGO */}
+
+      {site.teamLogo && (
+        <div
+          style={itemStyle("logo")}
+          onPointerDown={(e) =>
+            beginDrag(
+              e,
+              "logo",
+              "move"
+            )
+          }
+        >
+          <img
+            src={site.teamLogo}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              pointerEvents: "none",
+            }}
+          />
+
+          {selected === "logo" && (
+            <ResizeHandle
+              onPointerDown={(e) =>
+                beginDrag(
+                  e,
+                  "logo",
+                  "resize"
+                )
+              }
+            />
+          )}
+        </div>
+      )}
+
+      {/* NAME */}
+
+      <div
+        style={itemStyle("name")}
+        onPointerDown={(e) =>
+          beginDrag(
+            e,
+            "name",
+            "move"
+          )
+        }
+      >
+        <strong
+          style={{
+            fontSize:
+              layout.name.fontSize,
+            lineHeight: 0.9,
+            color: site.colors.text,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {site.name}
+        </strong>
+
+        {selected === "name" && (
+          <ResizeHandle
+            onPointerDown={(e) =>
+              beginDrag(
+                e,
+                "name",
+                "resize"
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* TAG */}
+
+      <div
+        style={itemStyle("tag")}
+        onPointerDown={(e) =>
+          beginDrag(
+            e,
+            "tag",
+            "move"
+          )
+        }
+      >
+        <strong
+          style={{
+            fontSize:
+              layout.tag.fontSize,
+            color: site.colors.accent,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {site.tag}
+        </strong>
+
+        {selected === "tag" && (
+          <ResizeHandle
+            onPointerDown={(e) =>
+              beginDrag(
+                e,
+                "tag",
+                "resize"
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* DESCRIPTION */}
+
+      <div
+        style={itemStyle("description")}
+        onPointerDown={(e) =>
+          beginDrag(
+            e,
+            "description",
+            "move"
+          )
+        }
+      >
+        <p
+          style={{
+            margin: 0,
+            fontSize:
+              layout.description
+                .fontSize,
+            color: site.colors.muted,
+            lineHeight: 1.5,
+          }}
+        >
+          {site.description}
+        </p>
+
+        {selected ===
+          "description" && (
+          <ResizeHandle
+            onPointerDown={(e) =>
+              beginDrag(
+                e,
+                "description",
+                "resize"
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* BUTTONS */}
+
+      <div
+        style={itemStyle("buttons")}
+        onPointerDown={(e) =>
+          beginDrag(
+            e,
+            "buttons",
+            "move"
+          )
+        }
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            pointerEvents: "none",
+          }}
+        >
+          <button
+            style={{
+              height: 45,
+              padding: "0 18px",
+              background:
+                site.colors.accent,
+              border: 0,
+              borderRadius: 6,
+              fontWeight: 800,
+              fontSize:
+                layout.buttons
+                  .fontSize,
+            }}
+          >
+            {site.heroButton}
+          </button>
+
+          <button
+            style={{
+              height: 45,
+              padding: "0 18px",
+              background:
+                "transparent",
+              color:
+                site.colors.text,
+              border: `1px solid ${site.colors.line}`,
+              borderRadius: 6,
+              fontWeight: 700,
+              fontSize:
+                layout.buttons
+                  .fontSize,
+            }}
+          >
+            TikTok
+          </button>
+        </div>
+
+        {selected === "buttons" && (
+          <ResizeHandle
+            onPointerDown={(e) =>
+              beginDrag(
+                e,
+                "buttons",
+                "resize"
+              )
+            }
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ResizeHandle({
+  onPointerDown,
+}: {
+  onPointerDown: (
+    e: React.PointerEvent
+  ) => void;
+}) {
+  return (
+    <div
+      onPointerDown={onPointerDown}
+      style={{
+        position: "absolute",
+        right: -6,
+        bottom: -6,
+        width: 14,
+        height: 14,
+        borderRadius: 3,
+        background: "#fff",
+        border: "2px solid #111",
+        cursor: "nwse-resize",
+        zIndex: 20,
+      }}
+    />
+  );
+}
+
+/* -------------------------------------------------- */
+/* PREVIEW                                           */
+/* -------------------------------------------------- */
+
+function Preview({
+  site,
+  layout,
+}: {
+  site: Site;
+  layout: Layout;
+}) {
+  return (
+    <div className="preview">
+      <div className="previewBar">
+        <span>LIVE PREVIEW</span>
+
+        <a
+          href="/"
+          target="_blank"
+        >
+          Open ↗
+        </a>
+      </div>
+
+      <div
+        className="previewFrame"
+        style={{
+          backgroundColor:
+            site.colors.bg,
+
+          backgroundImage:
+            (site as any).background
+              ?.image
+              ? `linear-gradient(rgba(0,0,0,${
+                  (site as any)
+                    .background
+                    ?.overlay ?? 0.35
+                }),rgba(0,0,0,${
+                  (site as any)
+                    .background
+                    ?.overlay ?? 0.35
+                })),url("${(site as any).background.image}")`
+              : "none",
+
+          backgroundPosition:
+            (site as any).background
+              ?.position || "center",
+
+          backgroundSize:
+            (site as any).background
+              ?.size || "cover",
+
+          color: site.colors.text,
+        }}
+      >
+        <div className="pNav">
+          <b>{site.name}</b>
+
+          <span>
+            GAMES　 ROSTER　 ABOUT
+          </span>
+        </div>
+
+        <div
+          style={{
+            position: "relative",
+            height: 560,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: layout.intro.x,
+              top: layout.intro.y,
+              width: layout.intro.width,
+              color: site.colors.muted,
+              fontSize:
+                layout.intro.fontSize,
+              fontWeight: 800,
+            }}
+          >
+            {site.intro}
+          </div>
+
+          {site.teamLogo && (
+            <img
+              src={site.teamLogo}
+              alt=""
+              style={{
+                position: "absolute",
+                left: layout.logo.x,
+                top: layout.logo.y,
+                width: layout.logo.width,
+                height: layout.logo.height,
+                objectFit: "contain",
+              }}
+            />
+          )}
+
+          <strong
+            style={{
+              position: "absolute",
+              left: layout.name.x,
+              top: layout.name.y,
+              width: layout.name.width,
+              fontSize:
+                layout.name.fontSize,
+              lineHeight: 0.9,
+            }}
+          >
+            {site.name}
+          </strong>
+
+          <strong
+            style={{
+              position: "absolute",
+              left: layout.tag.x,
+              top: layout.tag.y,
+              width: layout.tag.width,
+              color: site.colors.accent,
+              fontSize:
+                layout.tag.fontSize,
+            }}
+          >
+            {site.tag}
+          </strong>
+
+          <p
+            style={{
+              position: "absolute",
+              left:
+                layout.description.x,
+              top:
+                layout.description.y,
+              width:
+                layout.description
+                  .width,
+              color: site.colors.muted,
+              fontSize:
+                layout.description
+                  .fontSize,
+            }}
+          >
+            {site.description}
+          </p>
+
+          <div
+            style={{
+              position: "absolute",
+              left:
+                layout.buttons.x,
+              top:
+                layout.buttons.y,
+            }}
+          >
+            <button>
+              {site.heroButton}
+            </button>
+
+            <button>
+              TikTok
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------- */
+/* UI COMPONENTS                                     */
+/* -------------------------------------------------- */
+
+function Block({
+  id,
+  title,
+  children,
+}: {
+  id: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      id={id}
+      className="block"
+    >
+      <div className="blockHead">
+        <span>EDIT</span>
+
+        <h2>{title}</h2>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+}) {
+  return (
+    <label className="field">
+      {label}
+
+      <input
+        value={value || ""}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
+      />
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (
+    value: number
+  ) => void;
+}) {
+  return (
+    <label className="field">
+      {label}
+
+      <input
+        type="number"
+        value={Math.round(value)}
+        onChange={(e) =>
+          onChange(
+            Number(e.target.value)
+          )
+        }
+      />
+    </label>
+  );
+}
+
+function Area({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+}) {
+  return (
+    <label className="field">
+      {label}
+
+      <textarea
+        rows={5}
+        value={value || ""}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
+      />
+    </label>
+  );
+}
+
+function ImageField({
+  label,
+  value,
+  onChange,
+  onUpload,
+}: {
+  label: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+  onUpload: (
+    file: File
+  ) => void;
+}) {
+  return (
+    <div className="imageField">
+      <Field
+        label={`${label} URL (optional)`}
+        value={value}
+        onChange={onChange}
+      />
+
+      <label className="upload">
+        Choose from computer
+
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => {
+            const file =
+              e.target.files?.[0];
+
+            if (file) {
+              onUpload(file);
+            }
+          }}
+        />
+      </label>
+
+      {value && (
+        <img
+          src={value}
+          alt="preview"
+        />
+      )}
+    </div>
+  );
+}
+
+function GameEdit({
+  title,
+  data,
+  set,
+  upload,
+}: {
+  title: string;
+  data: {
+    title: string;
+    desc: string;
+    logo: string;
+  };
+  set: (
+    key: string,
+    value: string
+  ) => void;
+  upload: (
+    file: File
+  ) => void;
+}) {
+  return (
+    <div className="gameEdit">
+      <h3>{title}</h3>
+
+      <Field
+        label="Title"
+        value={data.title}
+        onChange={(v) =>
+          set("title", v)
+        }
+      />
+
+      <Field
+        label="Description"
+        value={data.desc}
+        onChange={(v) =>
+          set("desc", v)
+        }
+      />
+
+      <ImageField
+        label="Logo"
+        value={data.logo}
+        onChange={(v) =>
+          set("logo", v)
+        }
+        onUpload={upload}
+      />
+    </div>
+  );
+}
+
+function Toggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (
+    value: boolean
+  ) => void;
+}) {
+  return (
+    <label className="toggle">
+      <span>{label}</span>
+
+      <button
+        type="button"
+        className={
+          value ? "on" : ""
+        }
+        onClick={() =>
+          onChange(!value)
+        }
+      >
+        <i />
+      </button>
+    </label>
+  );
+}
